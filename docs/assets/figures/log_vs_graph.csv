@@ -1,0 +1,5 @@
+scenario,best_graph_ap,best_graph_method,best_flat_ap,best_flat_method
+coordinated_ring,0.9999999999999999,abnormal_subgraph:similarity,0.22198988676031262,baseline:error_rate_threshold
+external_to_internal,1.0,node_outlier:egonet,0.025632092986044443,baseline:off_hours_rule
+slow_group_drift,0.6218642715169345,community_drift:codrift,0.14538346077711783,baseline:volume_threshold
+stolen_key,0.8642373587702704,node_outlier:egonet,0.8745973896691617,baseline:volume_threshold

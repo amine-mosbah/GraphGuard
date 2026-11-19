@@ -1,0 +1,148 @@
+# =============================================================================
+# GraphGuard — full deployment stack.
+# =============================================================================
+#   nginx     reverse proxy: TLS termination, serves the built dashboard, /api
+#   api       FastAPI, behind uvicorn
+#   worker    Celery, runs the detection pipeline off the request path
+#   postgres  the database of record
+#   redis     Celery broker, refresh-token denylist, rate-limit store
+#
+# There is deliberately no load balancer. One would be theatre in front of a
+# single-instance service: the API is stateless (session state lives in Redis),
+# so scaling out means adding replicas behind this proxy and nothing else. That
+# is a stronger claim than a fake LB because it is true and the design shows it.
+#
+# Start:  docker compose up -d --build
+# Admin:  docker compose exec api graphguard platform create-admin
+# =============================================================================
+
+name: graphguard
+
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: graphguard-backend:local
+  environment: &backend-env
+    GRAPHGUARD_ENVIRONMENT: ${GRAPHGUARD_ENVIRONMENT:-production}
+    GRAPHGUARD_DATABASE_URL: postgresql+psycopg://graphguard:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/graphguard
+    GRAPHGUARD_REDIS_URL: redis://redis:6379/0
+    GRAPHGUARD_JWT_SECRET: ${GRAPHGUARD_JWT_SECRET:?set GRAPHGUARD_JWT_SECRET in .env}
+    GRAPHGUARD_CORS_ORIGINS: ${GRAPHGUARD_CORS_ORIGINS:-http://localhost}
+    # The analyst assistant (D39). Off unless the .env opts in *and* supplies the
+    # Anthropic credential; the platform behaves identically without either.
+    GRAPHGUARD_ASSISTANT_ENABLED: ${GRAPHGUARD_ASSISTANT_ENABLED:-false}
+    GRAPHGUARD_ASSISTANT_PROVIDER: ${GRAPHGUARD_ASSISTANT_PROVIDER:-anthropic}
+    GRAPHGUARD_ASSISTANT_MODEL: ${GRAPHGUARD_ASSISTANT_MODEL:-claude-opus-5}
+    GRAPHGUARD_ASSISTANT_BASE_URL: ${GRAPHGUARD_ASSISTANT_BASE_URL:-}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: graphguard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: graphguard
+      # UTF-8 explicitly: an SQL_ASCII database makes psycopg return bytes where
+      # SQLAlchemy expects str, which fails at connection time with an error that
+      # points nowhere near the encoding.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U graphguard -d graphguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    # Not published to the host. The database is reachable only on the compose
+    # network; exposing 5432 on a VPS is how databases end up in Shodan.
+    expose:
+      - "5432"
+
+  redis:
+    image: redis:7-alpine
+    # Persist the denylist: losing it on restart would silently un-revoke every
+    # refresh token that had been logged out or compromised.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    expose:
+      - "6379"
+
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  api:
+    <<: *backend
+    command:
+      - uvicorn
+      - graphguard.api.app:create_app
+      - --factory
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --workers
+      - "2"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "8000"
+
+  worker:
+    <<: *backend
+    # --concurrency=1: a pipeline run is CPU-bound on numerical work that already
+    # uses multiple threads internally, so several concurrent runs on one host
+    # contend for the same cores and each finishes later than if they had queued.
+    command:
+      - celery
+      - -A
+      - graphguard.platform.jobs:celery_app
+      - worker
+      - --loglevel=info
+      - --concurrency=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  nginx:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.nginx
+    image: graphguard-nginx:local
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:

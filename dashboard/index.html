@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>GraphGuard — Graph Security Analytics</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      /*
+       * Resolve the theme before the bundle loads.
+       *
+       * Without this, a light-preference analyst gets a dark flash on every single load:
+       * the stylesheet defaults to dark and React only writes data-theme after hydration.
+       * There is no <meta name="color-scheme"> here on purpose — a static one would pin
+       * the UA surfaces to a single theme and fight html[data-theme] on first paint.
+       *
+       * The storage key and the three states are duplicated from src/lib/theme.tsx. That
+       * is the one duplication worth accepting: this has to run before any module does.
+       */
+      (function () {
+        try {
+          var raw = localStorage.getItem("gg.theme");
+          var pref = raw === "light" || raw === "dark" || raw === "system" ? raw : "system";
+          var theme =
+            pref === "system"
+              ? window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
+                ? "light"
+                : "dark"
+              : pref;
+          document.documentElement.dataset.theme = theme;
+        } catch (e) {
+          /* Private mode or a blocked storage partition. Dark is the stylesheet default. */
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

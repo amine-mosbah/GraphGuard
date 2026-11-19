@@ -1,0 +1,201 @@
+# Continuous integration — the four quality gates, on every push.
+#
+# The gates are the ones docs/DESIGN.md §13 names and that development already runs
+# locally: ruff, black, mypy, pytest. Running them here means a green main branch
+# is a fact rather than a claim, which matters for a report that cites the test
+# count as evidence.
+#
+# The suite runs twice: once on SQLite (fast, the developer default) and once on
+# PostgreSQL (the deployment target). Both matter — the enum check constraints and
+# JSONB storage behave differently enough between the two that a SQLite-only run
+# would have missed the unconstrained-role defect found while wiring Postgres up.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push makes an in-flight run obsolete; cancelling frees the runner.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.9.7"
+
+jobs:
+  lint:
+    name: Lint and type check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: ruff
+        run: uv run ruff check .
+
+      - name: black
+        run: uv run black --check .
+
+      - name: mypy
+        run: uv run mypy src
+
+  test-sqlite:
+    name: Tests (SQLite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: pytest
+        run: uv run pytest -q
+
+  test-postgres:
+    name: Tests (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: graphguard
+          POSTGRES_PASSWORD: graphguard
+          POSTGRES_DB: graphguard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U graphguard"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      # Only the platform tests are database-backed; the analytics suite has no
+      # database at all, so re-running it here would just double the CI bill.
+      - name: pytest (platform layer against Postgres)
+        env:
+          GRAPHGUARD_TEST_DATABASE_URL: postgresql+psycopg://graphguard:graphguard@localhost:5432/graphguard
+        run: uv run pytest -q tests/test_platform_auth.py tests/test_platform_settings.py tests/test_platform_runs.py tests/test_platform_admin.py tests/test_platform_ops.py
+
+  migrations:
+    name: Migrations apply and match the models
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: graphguard
+          POSTGRES_PASSWORD: graphguard
+          POSTGRES_DB: graphguard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U graphguard"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      GRAPHGUARD_DATABASE_URL: postgresql+psycopg://graphguard:graphguard@localhost:5432/graphguard
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      # Catches the failure mode where a model is edited and the migration is
+      # forgotten: the code would work locally against a hand-made database and
+      # break on a fresh deployment.
+      - name: No drift between models and migrations
+        run: uv run alembic check
+
+      - name: Downgrade to base and back
+        run: |
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate the compose file
+        env:
+          POSTGRES_PASSWORD: ci-placeholder
+          GRAPHGUARD_JWT_SECRET: ci-placeholder-secret-of-sufficient-length
+        run: docker compose config >/dev/null
+
+      # Build only — the image is not pushed anywhere. This catches a broken
+      # Dockerfile at commit time rather than at deploy time.
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: graphguard-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.nginx
+          push: false
+          load: true
+          tags: graphguard-nginx:ci
+          cache-from: type=gha,scope=nginx
+          cache-to: type=gha,mode=max,scope=nginx
+
+      - name: Smoke test the image
+        run: |
+          docker run --rm \
+            -e GRAPHGUARD_ENVIRONMENT=development \
+            graphguard-backend:ci \
+            graphguard --help

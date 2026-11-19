@@ -1,0 +1,42 @@
+# Keep the build context small and free of anything that should not be baked into an image.
+
+# Local state and secrets — a .env copied into the image would ship credentials.
+.env
+*.db
+*.sqlite3
+
+# Virtualenv: rebuilt inside the image for the target platform. Copying a macOS
+# arm64 .venv into a Linux image would silently produce unimportable binaries.
+.venv/
+venv/
+
+# Caches
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Not needed at runtime
+.git/
+.github/
+docs/
+report/
+notebooks/
+tests/
+data/
+runs/
+dashboard/node_modules/
+dashboard/dist/
+
+# Reference material and the companion research repositories (~4 GB)
+CSLWork/
+docs/reference/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,207 @@
+# =============================================================================
+# GraphGuard — default configuration
+# =============================================================================
+# This file is the single source of runtime configuration for the pipeline.
+# It is also the administrator's "Platform Configuration" surface.
+#
+# Most values here are read by code; the ingestion block declares the adapter
+# surface ahead of a raw-file ingestion path, which does not exist yet.
+# =============================================================================
+
+run:
+  # Fixed seed everywhere (docs/DESIGN.md §13: reproducibility is mandatory).
+  seed: 1337
+  # Directory where experiment runs are saved (config snapshot + metrics + figures).
+  output_dir: runs
+
+# -----------------------------------------------------------------------------
+# Ingestion — which telemetry adapters are active.
+# Layer tiers map to docs/DESIGN.md §6: ai = Core, http = Layer 2, network = Stretch.
+# -----------------------------------------------------------------------------
+ingestion:
+  adapters:
+    ai_telemetry:
+      enabled: true
+      # OpenTelemetry GenAI semantic conventions (gen_ai.*) are the source format.
+      source_format: otel_genai
+    http_gateway:
+      enabled: true # Layer 2
+    network_auth:
+      enabled: false # Stretch
+
+# -----------------------------------------------------------------------------
+# Synthetic telemetry simulator (docs/DESIGN.md §6: synthetic-first, always).
+# -----------------------------------------------------------------------------
+simulator:
+  # Simulated observation period.
+  start: "2026-03-02T00:00:00+00:00"
+  days: 14
+
+  benign:
+    n_users: 60
+    # Persona mix must sum to 1.0. Each persona has a distinct behavioural
+    # signature, which is what makes "this account stopped behaving like itself"
+    # a meaningful statement.
+    persona_mix:
+      researcher: 0.30 # bursty, exploratory, many models, long prompts
+      app_developer: 0.45 # steady, few models, working hours, high volume
+      batch_job: 0.15 # scheduled, off-hours, single model, very regular
+      casual: 0.10 # low volume, irregular
+    # Diurnal shaping: probability weight of activity by hour-of-day (UTC).
+    working_hours: [8, 18]
+    weekend_activity_factor: 0.25
+    # Baseline outcome rates for benign traffic.
+    error_rate: 0.02
+    refusal_rate: 0.01
+
+  # Benign gateway traffic (Layer 2). Legitimate users browse the API from the
+  # same addresses their keys call from, so a shared ip vertex is the normal
+  # case and the cross-layer attack has to be found among many innocent joins.
+  http:
+    enabled: true
+    requests_per_key_per_day: 18
+    login_failure_rate: 0.06 # humans mistype passwords
+
+  scenarios:
+    credential_stuffing:
+      enabled: true
+      # A pure external attack that never breaches — the control for the chain below.
+      onset_fraction: 0.45
+      attempts_per_hour: 120
+      duration_hours: 4
+      ip_offset: 40
+    external_to_internal:
+      enabled: true
+      # The showcase chain (docs/DESIGN.md §7): brute force -> one success -> internal abuse
+      # from the same address. No stage justifies an alert alone.
+      onset_fraction: 0.55
+      attempts_per_hour: 90
+      stuffing_hours: 3
+      pivot_delay_hours: 6
+      calls_per_day: 120
+      ip_offset: 41
+    coordinated_ring:
+      enabled: true
+      # Freshly created accounts driven by one actor, in synchronized bursts.
+      n_accounts: 18
+      onset_fraction: 0.35
+      calls_per_day: 60
+      # Seconds of jitter on the shared burst schedule; small = eerily in sync.
+      sync_jitter_s: 90
+      bursts_per_day: 6
+    slow_group_drift:
+      enabled: true
+      # A whole team migrates gradually; no member is an outlier in any one window.
+      cohort_size: 10
+      onset_fraction: 0.25
+      final_model_shift: 0.8 # calls diverted to the new shared model by the end
+      final_hour_shift: 5.0 # hours the cohort's activity has slid by the end
+    stolen_key:
+      enabled: true
+      # How many legitimate api_keys get compromised.
+      n_victims: 3
+      # When the compromise starts, as a fraction of the observation period.
+      onset_fraction: 0.6
+      # Behavioural deltas that define the attack signature.
+      volume_multiplier: 8.0
+      off_hours_bias: 0.85 # fraction of attack traffic outside working hours
+      new_model_ratio: 0.7 # fraction of calls to models the victim never used
+      error_rate: 0.12 # attacker fumbles more (bad params, rate limits)
+
+# -----------------------------------------------------------------------------
+# Graph construction (docs/DESIGN.md §3.1).
+# -----------------------------------------------------------------------------
+graph:
+  # Time-windowed snapshots for drift/change detection.
+  snapshot:
+    window: 1d # pandas-style offset: 1h, 6h, 1d
+    stride: 1d # equal to window => tumbling; smaller => sliding
+  # Multi-edges between the same pair within a window are collapsed into one
+  # weighted edge carrying count/aggregate attributes.
+  aggregate_parallel_edges: true
+  # Drop nodes with fewer than this many events in a window (noise floor).
+  min_node_events: 1
+  # Business hours of the monitored organisation; defines the `night_ratio` node feature.
+  # This is a property of the deployment, not of the simulator.
+  working_hours: [8, 18]
+
+# -----------------------------------------------------------------------------
+# Detection suite (docs/DESIGN.md §3.2). Detectors return explainable signals only.
+# -----------------------------------------------------------------------------
+detection:
+  node_outlier:
+    enabled: true
+    # "pygod:dominant" | "baseline:egonet" — baseline is always run for comparison.
+    method: pygod:dominant
+    pygod:
+      hid_dim: 64
+      num_layers: 2
+      epochs: 100
+      lr: 0.005
+      dropout: 0.0
+      weight_decay: 0.0
+    # Contamination is an *assumption*, not ground truth: the expected fraction
+    # of anomalous nodes. Reported explicitly in results.
+    contamination: 0.05
+    # Node types actually scored (we score behavioural entities, not resources).
+    score_node_types: [api_key, user]
+
+  community_drift:
+    enabled: true
+    # Entities whose behaviour is moving in the same *direction* are co-drifting.
+    # Benign displacement directions are uncorrelated (measured median ~0.00).
+    coherence_threshold: 0.35
+    # Minimum movement before an entity counts as drifting at all.
+    min_displacement: 0.08
+    # A drifting "group" of two is just two entities changing — node-outlier's job.
+    min_community_size: 4
+    # Snapshots averaged into each entity's own baseline.
+    baseline_windows: 3
+    score_node_types: [api_key]
+
+  abnormal_subgraph:
+    enabled: true
+    # Combined behaviour similarity (features + targets + minute-level timing)
+    # above which two keys count as acting "in unison".
+    similarity_threshold: 0.8
+    # Pairs/triples of near-identical keys occur naturally; ten do not.
+    min_cluster_size: 5
+    # Which specific IP a key uses is infrastructure identity, not behaviour:
+    # farms rotate proxies precisely so per-member addresses differ.
+    ignore_relations: [used_from]
+    score_node_types: [api_key]
+
+# -----------------------------------------------------------------------------
+# Correlation, ranking and explanation (docs/DESIGN.md §3.3).
+# -----------------------------------------------------------------------------
+correlation:
+  # Alerts below this normalised score are not surfaced to the analyst.
+  alert_threshold: 0.75
+  max_alerts: 50
+  explanation:
+    # Number of contributing features named in the plain-language "why". The
+    # evidence neighbourhood is fixed at one hop: the direct counterparties
+    # that produced the score.
+    top_k_reasons: 3
+  # Framework tags attached to alerts where applicable.
+  tag_frameworks: [MITRE_ATLAS, OWASP_LLM_TOP10]
+
+# -----------------------------------------------------------------------------
+# Evaluation harness (docs/DESIGN.md §5 (feature 6)).
+# -----------------------------------------------------------------------------
+evaluation:
+  metrics: [precision, recall, f1, roc_auc, average_precision]
+  # Precision@k / Recall@k reported at these cut-offs (BOND-style).
+  k_values: [5, 10, 20, 50]
+  # The "invisible in raw logs, obvious in the graph" comparison.
+  log_vs_graph:
+    enabled: true
+    # Flat-log baselines to beat: naive per-event rules an analyst would write.
+    baselines: [volume_threshold, error_rate_threshold, off_hours_rule]
+
+# -----------------------------------------------------------------------------
+# API + dashboard (Weeks 9-10).
+# -----------------------------------------------------------------------------
+api:
+  host: 127.0.0.1
+  port: 8000

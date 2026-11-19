@@ -1,0 +1,11 @@
+<!--
+  The GraphGuard mark. Geometry is duplicated by hand from src/components/Logo.tsx — a React
+  component cannot serve as a favicon and a favicon cannot be imported as a component — so if
+  one changes, change the other. The path is identical; only the fill differs, because a
+  favicon has no `currentColor` to inherit from.
+
+  It is a pinwheel with 4-fold rotational and no mirror symmetry: never flip it.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <path fill="#7da2f0" fill-rule="evenodd" d="M49.476 0L71.257 0A50.687 50.687 0 0 0 100 49.476L100 71.257A50.687 50.687 0 0 0 50.524 100L28.743 100A50.687 50.687 0 0 0 0 50.524L0 28.743A50.687 50.687 0 0 0 49.476 0ZM50 7.645A50.326 50.326 0 0 1 7.645 50A50.326 50.326 0 0 1 50 92.355A50.326 50.326 0 0 1 92.355 50A50.326 50.326 0 0 1 50 7.645Z"/>
+</svg>

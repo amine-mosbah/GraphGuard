@@ -1,0 +1,29 @@
+volume_multiplier,method,average_precision
+1.5,Node-outlier (egonet),0.7083876027747114
+1.5,Node-outlier (DOMINANT),0.13773631279892087
+1.5,Abnormal subgraph,0.021761658031088083
+1.5,Community drift,0.0250543929300406
+1.5,Flat log: volume,0.12399495973782254
+1.5,Flat log: error rate,0.19948232080081724
+1.5,Flat log: off-hours,0.052121877712539184
+2.0,Node-outlier (egonet),0.654593060782938
+2.0,Node-outlier (DOMINANT),0.14299358740137158
+2.0,Abnormal subgraph,0.021761658031088083
+2.0,Community drift,0.028158910249471186
+2.0,Flat log: volume,0.2812617536522882
+2.0,Flat log: error rate,0.3125382577401813
+2.0,Flat log: off-hours,0.06904842203073751
+4.0,Node-outlier (egonet),0.7426303094935736
+4.0,Node-outlier (DOMINANT),0.20179758999878497
+4.0,Abnormal subgraph,0.021761658031088083
+4.0,Community drift,0.02752810968947164
+4.0,Flat log: volume,0.6214927609375791
+4.0,Flat log: error rate,0.47112966128433253
+4.0,Flat log: off-hours,0.08418139055099336
+8.0,Node-outlier (egonet),0.7383520170387687
+8.0,Node-outlier (DOMINANT),0.2696756745686458
+8.0,Abnormal subgraph,0.021761658031088083
+8.0,Community drift,0.02752810968947164
+8.0,Flat log: volume,0.873515883948588
+8.0,Flat log: error rate,0.5198745254026435
+8.0,Flat log: off-hours,0.08579331167064368

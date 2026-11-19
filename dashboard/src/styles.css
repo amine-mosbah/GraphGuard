@@ -1,0 +1,727 @@
+@import "tailwindcss";
+
+/*
+ * GraphGuard design tokens.
+ *
+ * The dark theme is tuned to the landing page's palette, so signing in does not feel like
+ * moving to a different product: the canvas IS the landing canvas (#081328), and surfaces,
+ * lines and accent are the same blue-navy family rather than the neutral graphite this
+ * previously used. The console had read as cold near-black with a lighter slate rail
+ * floating on top of it; the rail and the body are now one family.
+ *
+ * The brand colour is #1b2b4d. It is used as a *surface* — sidebar, cards, panels,
+ * elevated regions — because that is what it is good at: white text on it reads at
+ * 14.0:1, comfortably past WCAG AA.
+ *
+ * It deliberately is NOT the accent. Measured against the canvas it sits at 1.32:1, which
+ * is invisible. Accents therefore come from a lightened sibling in the same hue family, so
+ * the palette still reads as one family while active states, buttons and focus rings
+ * remain legible.
+ *
+ * To re-tune the whole product, change --brand and the three --accent stops.
+ *
+ * ---------------------------------------------------------------------------------
+ * THE INVARIANT, and it is load-bearing:
+ *
+ *   Any token declared in [data-theme="light"] must ALSO be declared in .panel-brand.
+ *
+ * .panel-brand stays navy in both themes, so it re-declares the themed tokens locally
+ * to keep its descendants correct. A token that flips for light but is missing from
+ * .panel-brand will render its light value on a dark navy panel. Derived tokens (the
+ * --color-wash-* set, which are color-mix over base tokens) are exempt: they resolve
+ * at the use site and therefore pick up whichever base values are in scope.
+ * ---------------------------------------------------------------------------------
+ */
+@theme {
+  /* --- brand ------------------------------------------------------------- */
+  --color-brand: #1b2b4d;
+  --color-brand-600: #132139;
+  --color-brand-400: #2f4372;
+  --color-brand-300: #42588f;
+
+  /* --- accent (lightened brand family; must stay legible on --color-canvas) */
+  --color-accent: #6f9bff;
+  --color-accent-strong: #4d80ee;
+  --color-accent-soft: #8fb4ff;
+  /* Foreground for anything sitting ON the accent. Inverts with it. */
+  --color-on-accent: #0a1020;
+
+  /* --- canvas and surfaces ----------------------------------------------- */
+  --color-canvas: #081328;
+  --color-surface: #101b30;
+  --color-surface-2: #16233c;
+  --color-line: #23304a;
+
+  /* --- text -------------------------------------------------------------- */
+  --color-ink: #eef3fb;
+  --color-ink-dim: #9daac2;
+  --color-ink-faint: #8b98b0;
+
+  /* --- neutral overlays --------------------------------------------------
+     Tokens rather than literal `bg-white/5`, because a white wash lifts a dark
+     surface and dirties a light one. These are the only two "lift" values the
+     interface uses, so theming them here themes every hover, ghost button and
+     table row at once. */
+  --color-raise: rgb(255 255 255 / 0.05);
+  --color-raise-strong: rgb(255 255 255 / 0.1);
+  --color-raise-subtle: rgb(255 255 255 / 0.03);
+  --color-hairline: rgb(255 255 255 / 0.1);
+
+  /* The opposite of a raise: a recessed field, for inputs and message bubbles sunk
+     into a surface rather than lifted off it. A dark theme sinks by darkening; a
+     light theme cannot (there is nothing below white), so it sinks by tinting
+     toward the canvas instead. */
+  --color-sink: rgb(0 0 0 / 0.22);
+
+  /* --- severity ---------------------------------------------------------- */
+  /* Paired with a shape or an icon everywhere they appear: colour alone fails
+     for colour-blind analysts, and this is a triage queue read under pressure. */
+  --color-critical: #ff5d6c;
+  --color-high: #ff9f43;
+  --color-medium: #ffd93d;
+  --color-low: #4ec9a5;
+  --color-ok: #2fbf87;
+
+  /* Foreground for text sitting ON a solid severity fill. The dark ramp is bright
+     and takes dark ink; the light ramp is darkened for white paper and takes white.
+     White on #ff5d6c is 2.8:1 and fails, which is what the notification badge was
+     doing before this token existed. */
+  --color-on-severity: #0a1020;
+
+  /* --- severity washes ---------------------------------------------------
+     Derived, not authored. color-mix resolves at the use site, so each wash picks
+     up the [data-theme="light"] severity ramp *and* the .panel-brand overrides
+     without being restated in either. Authoring these as literals would mean
+     maintaining every value three times.
+     in oklab, because srgb mixing muddies a saturated hue toward grey. */
+  --color-wash-critical: color-mix(
+    in oklab,
+    var(--color-critical) 12%,
+    var(--color-surface)
+  );
+  --color-wash-high: color-mix(
+    in oklab,
+    var(--color-high) 12%,
+    var(--color-surface)
+  );
+  --color-wash-medium: color-mix(
+    in oklab,
+    var(--color-medium) 12%,
+    var(--color-surface)
+  );
+  --color-wash-low: color-mix(
+    in oklab,
+    var(--color-low) 12%,
+    var(--color-surface)
+  );
+  --color-wash-ok: color-mix(
+    in oklab,
+    var(--color-ok) 12%,
+    var(--color-surface)
+  );
+  --color-wash-accent: color-mix(
+    in oklab,
+    var(--color-accent) 12%,
+    var(--color-surface)
+  );
+
+  /* --- radius ------------------------------------------------------------
+     Semantic aliases, deliberately NOT a redefinition of Tailwind's numeric scale:
+     overriding --radius-lg would silently restyle every existing rounded-lg call
+     site in one unreviewable diff. Named roles let the ad-hoc rounded-[5px]/[4px]
+     sites be converted deliberately, one at a time.
+
+     Concentric rule, where it applies: inner = outer − inset. */
+  --radius-chip: 999px;
+  --radius-field: 8px;
+  --radius-control: 10px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
+  --radius-overlay: 20px;
+
+  /* --- motion ------------------------------------------------------------ */
+  /* Expo-out. Fast departure, soft arrival — reads as responsive rather than floaty
+     on controls that appear under the pointer. */
+  --ease-pop: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* --- entity types ------------------------------------------------------
+     Five hues for the five node types. They live here rather than in the map's
+     own code because the map paints pixels and cannot read a custom property —
+     it resolves these once via getComputedStyle (see lib/canvas-palette.ts), so
+     this file stays the one place a colour is decided.
+
+     Never carried alone: every glyph pairs its hue with a letter. */
+  --color-entity-api-key: #6f9bff;
+  --color-entity-user: #4ec9a5;
+  --color-entity-model: #c792ea;
+  --color-entity-ip: #ff9f43;
+  --color-entity-endpoint: #57c7ff;
+
+  /* --- chart series ------------------------------------------------------
+     Three categorical slots for charts that plot two or three *comparable*
+     series (a graph detector against a flat baseline, precision against
+     recall). Distinct from the entity hues above, which name a node type, and
+     from severity, which names a state — a chart must never borrow either, or
+     "series 2" starts reading as "high severity".
+
+     These are not chosen by eye. The set was run through the CVD/contrast
+     checks against this theme's surface: worst adjacent pair ΔE 9.4 under
+     deuteranopia and 20.9 with normal vision, all three above 3:1 on both the
+     panel and the brand panel. Adding a fourth slot broke it — the next hue
+     landed at ΔE 1.9 from the blue under protanopia — so a chart that needs a
+     fourth series needs small multiples instead.
+
+     Assigned in fixed order and never cycled, so a filter that drops a series
+     cannot repaint the survivors. */
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/*
+ * Elevation.
+ *
+ * Deliberately plain custom properties plus three utility classes, rather than
+ * @theme --shadow-*. Two reasons. First, elevation has to invert with the theme and
+ * not merely darken: a drop shadow is invisible against #081328, so a dark surface
+ * reads as lifted via a 1px inset highlight along its top edge, while a light surface
+ * reads as lifted via an ambient shadow. Those are different shadow *shapes*, not two
+ * opacities of one shape. Second, Tailwind v4's shadow utilities compose through
+ * --tw-shadow internals, and the foundation should not depend on that continuing to
+ * behave.
+ */
+:root {
+  --elev-1:
+    0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --elev-2:
+    0 1px 0 0 rgb(255 255 255 / 0.05) inset, 0 4px 12px -2px rgb(0 0 0 / 0.5);
+  --elev-3:
+    0 1px 0 0 rgb(255 255 255 / 0.06) inset, 0 12px 32px -8px rgb(0 0 0 / 0.6);
+}
+
+/*
+ * Light theme.
+ *
+ * Only the neutral surfaces flip. The brand navy is deliberately kept on the sidebar,
+ * the assistant panel and the sign-in card in *both* themes: it is the product's
+ * identity, a dark rail beside a light workspace is a well-established console
+ * pattern, and it means every overlay inside those surfaces stays correct rather than
+ * needing a parallel set of light values.
+ *
+ * The accent darkens rather than staying put. #6F9BFF reads at 6.9:1 on the dark
+ * canvas but only ~2:1 on white, so reusing it would make every active state and
+ * primary button illegible — the same trap the brand colour itself fell into.
+ */
+[data-theme="light"] {
+  --color-canvas: #f4f6fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef1f7;
+  --color-line: #d9dfea;
+
+  --color-ink: #16202e;
+  --color-ink-dim: #4a5a72;
+  --color-ink-faint: #77869c;
+
+  --color-accent: #2f5bb7;
+  --color-accent-strong: #24488f;
+  --color-accent-soft: #1d3d7d;
+  --color-on-accent: #ffffff;
+
+  --color-raise: rgb(15 23 42 / 0.04);
+  --color-raise-strong: rgb(15 23 42 / 0.08);
+  --color-raise-subtle: rgb(15 23 42 / 0.025);
+  --color-hairline: rgb(15 23 42 / 0.1);
+
+  --color-sink: rgb(15 23 42 / 0.04);
+
+  /* Severity darkened for a white background. The dark-theme values are tuned for
+     luminance against the dark navy and wash out completely on paper. */
+  --color-critical: #d13343;
+  --color-high: #b96612;
+  --color-medium: #8a6d0b;
+  --color-low: #1c7f63;
+  --color-ok: #147a55;
+
+  --color-on-severity: #ffffff;
+
+  /* Darkened for a white canvas: the dark ramp is chosen for luminance against
+     the dark navy and read as pastel on paper, which erases the type distinction. */
+  --color-entity-api-key: #2f5bb7;
+  --color-entity-user: #0f7a5e;
+  --color-entity-model: #7c3fb0;
+  --color-entity-ip: #c06a10;
+  --color-entity-endpoint: #0e7490;
+
+  /* Re-stepped for white, not flipped: the dark slots sit above 3:1 on
+     the dark navy and wash out on paper. Verified the same way — worst adjacent
+     pair ΔE 9.2 (deuteranopia), 24.0 (normal). The aqua lands at 2.82:1, just
+     under the contrast bar, which is why every series that uses it is also
+     directly labelled rather than identified by colour alone. */
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+
+  --elev-1: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  --elev-2: 0 4px 12px -2px rgb(15 23 42 / 0.1);
+  --elev-3: 0 12px 32px -8px rgb(15 23 42 / 0.18);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  html[data-theme="light"] {
+    color-scheme: light;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    /* Inter's disambiguated forms. A console is full of identifiers, hashes and IP
+       addresses, so the open 4 and the distinguishable l/1/I are worth the byte. */
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* A type scale on the elements themselves, so a page reaching for <h2> gets the
+     right size without every caller restating it in utilities. Sized for a dense
+     console, not an article: the reference's 2rem h1 is a marketing heading. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: var(--color-ink);
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.011em;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+  }
+  h2 {
+    font-size: 1.25rem;
+  }
+  h3 {
+    font-size: 1.0625rem;
+  }
+  h4 {
+    font-size: 0.9375rem;
+  }
+
+  p {
+    line-height: 1.5;
+  }
+
+  /* Zero-specificity defaults: any utility or inline style still wins. */
+  :where(button:not(:disabled)) {
+    cursor: pointer;
+  }
+
+  :where(button:disabled) {
+    cursor: not-allowed;
+  }
+
+  /* A visible focus ring is not optional in a tool an analyst drives from the
+     keyboard for hours. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border-radius: 999px;
+    border: 2px solid var(--color-canvas);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-brand-400);
+  }
+}
+
+@layer utilities {
+  .panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-panel);
+  }
+
+  /* The brand surface, used for the sidebar and for cards that should read as
+     "this is GraphGuard" rather than as neutral chrome.
+
+     It stays navy in both themes, so it re-declares the foreground tokens locally.
+     Without this the light theme's dark ink lands on a dark panel and the sidebar
+     becomes unreadable — custom properties cascade, so overriding them here fixes
+     every descendant at once rather than needing a light variant of each child.
+
+     See THE INVARIANT at the top of this file before adding a token above. */
+  .panel-brand {
+    background: linear-gradient(
+      160deg,
+      var(--color-brand) 0%,
+      var(--color-brand-600) 100%
+    );
+    border: 1px solid var(--color-brand-400);
+    border-radius: var(--radius-panel);
+
+    --color-ink: #eef3fb;
+    --color-ink-dim: #aab7cc;
+    --color-ink-faint: #8b98b0;
+    /*
+     * The rail's accent is a step lighter than the canvas accent, and that is a contrast
+     * requirement rather than a preference. The console leans on one pattern in about ten
+     * places — accent-coloured text on a 10–16% wash of the same accent (active nav, chips,
+     * the Assistant button, Help cards). Against the neutral surface that lands at
+     * 4.9–5.5:1; against this lighter navy rail the same pattern falls to 3.98–4.43:1,
+     * under the 4.5:1 small-text bar. Lightening the token here fixes every one of those
+     * sites at once, which is precisely what this local block exists to do — editing the
+     * call sites would mean ten near-identical diffs and no guarantee for the eleventh.
+     */
+    --color-accent: #8fb4ff;
+    --color-accent-soft: #a6c6ff;
+    --color-on-accent: #0a1020;
+    --color-raise: rgb(255 255 255 / 0.06);
+    --color-raise-strong: rgb(255 255 255 / 0.12);
+    --color-raise-subtle: rgb(255 255 255 / 0.03);
+    --color-hairline: rgb(255 255 255 / 0.12);
+    --color-sink: rgb(0 0 0 / 0.25);
+    --color-line: var(--color-brand-400);
+    --color-surface: #1d2f52;
+    --color-surface-2: #172645;
+    /* Severity keeps its dark-theme values here for the same reason as the ink. */
+    --color-critical: #ff7a86;
+    --color-high: #ff9f43;
+    --color-medium: #ffd93d;
+    --color-low: #4ec9a5;
+    --color-ok: #2fbf87;
+    --color-on-severity: #0a1020;
+    --color-entity-api-key: #6f9bff;
+    --color-entity-user: #4ec9a5;
+    --color-entity-model: #c792ea;
+    --color-entity-ip: #ff9f43;
+    --color-entity-endpoint: #57c7ff;
+    /* Dark slots: this panel is dark in both themes. */
+    --color-series-1: #3987e5;
+    --color-series-2: #d95926;
+    --color-series-3: #199e70;
+    /* Elevation likewise: this panel is dark in both themes, so it lifts the dark
+       way even when the page around it is light. */
+    --elev-1:
+      0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 1px 2px 0 rgb(0 0 0 / 0.4);
+    --elev-2:
+      0 1px 0 0 rgb(255 255 255 / 0.05) inset, 0 4px 12px -2px rgb(0 0 0 / 0.5);
+    --elev-3:
+      0 1px 0 0 rgb(255 255 255 / 0.06) inset, 0 12px 32px -8px rgb(0 0 0 / 0.6);
+
+    /* Re-resolve the inherited colour against the local token. Redefining the custom
+       property alone is not enough: `body` already computed `color` from the themed
+       value, and inheritance passes that computed colour down regardless. */
+    color: var(--color-ink);
+  }
+
+  /* The navigation is an application edge, not a floating panel. Keep the shared
+     brand surface and token scope, but let it meet every viewport corner squarely. */
+  .panel-brand.sidebar-shell {
+    border-radius: 0;
+  }
+
+  .elev-1 {
+    box-shadow: var(--elev-1);
+  }
+  .elev-2 {
+    box-shadow: var(--elev-2);
+  }
+  .elev-3 {
+    box-shadow: var(--elev-3);
+  }
+
+  .hairline {
+    border-color: var(--color-line);
+  }
+
+  /* Mount-only entrance. Deliberately short and non-repeating: it re-fires on every
+     route change, and anything longer turns deterministic screenshot capture for the
+     report into a fight. */
+  .animate-enter {
+    animation: gg-enter 260ms var(--ease-pop) backwards;
+  }
+
+  /* Respect the OS setting. The status map pulses; a vestibular disorder makes
+     that actively unpleasant, and docs/DESIGN.md §11.2 requires honouring this. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@keyframes gg-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.75;
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.pulse-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  animation: pulse-ring 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+/*
+ * Landing page.
+ *
+ * The marketing page is dark in both themes, on purpose. It is not a workspace an analyst
+ * sits in for hours — it is a first impression, and the brand artwork (navy field, blue
+ * colour-bend shader, the mark) is composed for a dark field. A light variant would need a second
+ * set of artwork to look like anything, so instead the page carries its own token scope
+ * and ignores [data-theme] entirely. It is the one surface allowed to do that.
+ *
+ * Smooth anchor scrolling is the platform's own `scroll-behavior`, not a scroll-hijacking
+ * library: it is one line, it cannot fight the trackpad, and the reduced-motion block
+ * further up this file does not need to know about it because the UA already honours the
+ * setting for scroll-behavior.
+ */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Set by Landing.tsx while that route is mounted. The landing is dark in both themes, and
+   without this the themed body colour shows through the overscroll bounce and the UA paints
+   light scrollbars and form controls over a navy page. */
+html[data-landing] {
+  color-scheme: dark;
+  background: #081328;
+}
+
+html[data-landing] body {
+  background: #081328;
+}
+
+.landing {
+  --landing-canvas: #081328;
+  --landing-canvas-deep: #050d1c;
+  --landing-ink: #eef3fb;
+  --landing-ink-dim: rgb(238 243 251 / 0.62);
+  --landing-ink-faint: rgb(238 243 251 / 0.42);
+  --landing-accent: #6f9bff;
+  /* The document's :focus-visible ring is drawn in --color-accent, which is a themed token
+     tuned for the console's canvas — on this navy it is either washed out (dark theme) or
+     nearly invisible (light theme's #2f5bb7). Mapping it onto the landing accent keeps
+     keyboard focus legible on every control inside this scope. */
+  --color-accent: #6f9bff;
+  --landing-line: rgb(255 255 255 / 0.1);
+  --landing-glass: rgb(255 255 255 / 0.04);
+
+  background: var(--landing-canvas);
+  color: var(--landing-ink);
+  color-scheme: dark;
+}
+
+/* The fixed bar overlaps the top of whatever an anchor lands on, so every scroll target
+   reserves the bar's height plus breathing room. */
+.landing [id] {
+  scroll-margin-top: 6rem;
+}
+
+/* Reveal-on-scroll. `is-visible` is applied by an IntersectionObserver in Landing.tsx.
+   The at-rest state is scoped under `reveal-armed`, which that same code adds before the
+   first paint — so if the script never runs, or the observer never reports, the page is
+   simply visible rather than a blank navy field. */
+.landing.reveal-armed .reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 700ms var(--ease-pop),
+    transform 700ms var(--ease-pop);
+}
+
+.landing.reveal-armed .reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing.reveal-armed .reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * Analyst assistant.
+ *
+ * The assistant page is the one console surface with a *waiting* state long enough to
+ * need artwork: an agent turn runs tool calls against the platform API and can take
+ * tens of seconds, and a bare "Thinking…" line gives the analyst nothing to read the
+ * progress from. So the page carries three token-driven effects, all defined here
+ * rather than as inline styles so they stay themable and are honoured by the
+ * reduced-motion block further up.
+ *
+ * The orb is deliberately the only element on the page allowed to keep its own blues in
+ * both themes. It is lit artwork — a glowing disc built out of inset shadows — and a
+ * light-theme repaint would have to invert the light source, which is not a colour swap
+ * but a different drawing. Its contents are therefore always light-on-dark, exactly like
+ * the brand panel, and it never carries information that is not also written in text.
+ *
+ * The static box-shadow on .gg-orb-ring is not redundant with the keyframes: under
+ * `prefers-reduced-motion` the animation is cut to a single 0.001ms pass and the element
+ * falls back to its base rule, so without it the orb would vanish for the users who most
+ * need a legible waiting state.
+ */
+@keyframes gg-orb-spin {
+  0% {
+    transform: rotate(90deg);
+    box-shadow:
+      0 6px 12px 0 #38bdf8 inset,
+      0 12px 18px 0 #005dff inset,
+      0 36px 36px 0 #1e40af inset,
+      0 0 3px 1.2px rgb(56 189 248 / 0.3),
+      0 0 6px 1.8px rgb(0 93 255 / 0.2);
+  }
+  50% {
+    transform: rotate(270deg);
+    box-shadow:
+      0 6px 12px 0 #60a5fa inset,
+      0 12px 6px 0 #0284c7 inset,
+      0 24px 36px 0 #005dff inset,
+      0 0 3px 1.2px rgb(56 189 248 / 0.3),
+      0 0 6px 1.8px rgb(0 93 255 / 0.2);
+  }
+  100% {
+    transform: rotate(450deg);
+    box-shadow:
+      0 6px 12px 0 #4dc8fd inset,
+      0 12px 18px 0 #005dff inset,
+      0 36px 36px 0 #1e40af inset,
+      0 0 3px 1.2px rgb(56 189 248 / 0.3),
+      0 0 6px 1.8px rgb(0 93 255 / 0.2);
+  }
+}
+
+/* Letters lift out of the disc one after another, so the label reads as progress
+   rather than as a stuck string. */
+@keyframes gg-orb-letter {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: translateY(0);
+  }
+  20% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  40% {
+    opacity: 0.7;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gg-aurora-drift {
+  0%,
+  100% {
+    transform: translate3d(-2%, 1%, 0) scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translate3d(2%, -2%, 0) scale(1.12);
+    opacity: 0.85;
+  }
+}
+
+@layer utilities {
+  .gg-orb-ring {
+    border-radius: 999px;
+    box-shadow:
+      0 6px 12px 0 #38bdf8 inset,
+      0 12px 18px 0 #005dff inset,
+      0 36px 36px 0 #1e40af inset,
+      0 0 3px 1.2px rgb(56 189 248 / 0.3),
+      0 0 6px 1.8px rgb(0 93 255 / 0.2);
+    animation: gg-orb-spin 5s linear infinite;
+  }
+
+  .gg-orb-letter {
+    display: inline-block;
+    opacity: 0.4;
+    animation: gg-orb-letter 3s infinite;
+  }
+
+  /* The wash behind the welcome state. Sized and positioned by the caller; this only
+     owns the drift, so one keyframe serves whatever geometry the page wants. */
+  .gg-aurora {
+    animation: gg-aurora-drift 14s ease-in-out infinite;
+  }
+
+  /*
+   * Pointer-tracked highlight for the suggestion cards.
+   *
+   * The card sets --gg-x/--gg-y on pointer move; nothing else re-renders, so hovering a
+   * grid of cards costs no React work at all. Purely decorative: the card is fully
+   * legible with the highlight absent, which is what a keyboard user gets.
+   */
+  .gg-spotlight::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 220ms var(--ease-pop);
+    pointer-events: none;
+    background: radial-gradient(
+      220px circle at var(--gg-x, 50%) var(--gg-y, 50%),
+      color-mix(in oklab, var(--color-accent) 16%, transparent),
+      transparent 72%
+    );
+  }
+
+  .gg-spotlight:hover::after {
+    opacity: 1;
+  }
+}
